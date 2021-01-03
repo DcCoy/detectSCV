@@ -52,6 +52,7 @@ methods
 			obj.info(2)            = settings.meop; 
 			obj.info(2).datatype   = 'meop';
 		end
+
 	end % end object method objInfo
 
 	function obj = objQC(obj)
@@ -432,7 +433,7 @@ methods
 			% Initiate flag
 			obj.flags(i).climatology = []; % code == 91
 			flag_idx                 = zeros(length(obj.profile(i).proc),1);
-
+			
 			% Load climatology
 			load([obj.info(i).climdir,obj.info(i).climfile]);
 	
@@ -591,6 +592,7 @@ methods
 
 				% Check for flags
 				if flag_idx(j) == 91
+					obj.profile(i).clim(j) = [];
 					continue;
 				end
 			    
@@ -633,13 +635,25 @@ methods
 			    	filler           = nan(length(obj.profile(i).proc(j).sigma0),1);
 			    	filler(data_ind) = clim_pres; clim_pres = filler;
 
-			        % Build structure
+			        % Build anomaly structure
 			        obj.profile(i).anom(j).temp_anom  = obj.profile(i).proc(j).temp - clim_temp;
 			        obj.profile(i).anom(j).salt_anom  = obj.profile(i).proc(j).salt - clim_salt;
 			        obj.profile(i).anom(j).spice_anom = obj.profile(i).proc(j).spice - clim_spice;
 			        obj.profile(i).anom(j).N2_anom    = obj.profile(i).proc(j).N2 - clim_N2;
 			        obj.profile(i).anom(j).pres_anom  = obj.profile(i).proc(j).pres - clim_pres;
 			        obj.profile(i).anom(j).sigma0     = obj.profile(i).proc(j).sigma0;
+
+				% Build final clim structure
+				obj.profile(i).clim(j).ID     = obj.profile(i).proc(j).ID;
+				obj.profile(i).clim(j).lon    = obj.profile(i).proc(j).lon;
+				obj.profile(i).clim(j).lat    = obj.profile(i).proc(j).lat;
+				obj.profile(i).clim(j).time   = obj.profile(i).proc(j).time;
+				obj.profile(i).clim(j).temp   = clim_temp;
+				obj.profile(i).clim(j).salt   = clim_salt;
+				obj.profile(i).clim(j).pres   = clim_pres;
+				obj.profile(i).clim(j).N2     = clim_N2;
+				obj.profile(i).clim(j).spice  = clim_spice;
+				obj.profile(i).clim(j).sigma0 = obj.profile(i).proc(j).sigma0;
 
 				% Data check
 				check = obj.profile(i).anom(j).temp_anom + ...
@@ -652,6 +666,8 @@ methods
 				end
 			end
 
+keyboard
+
 			% Log flagged profiles
 			ID               	 = [obj.profile(i).anom.ID];
 			obj.flags(i).climatology = ID(find(flag_idx == 91));
@@ -660,6 +676,7 @@ methods
 			
 			% Remove bad data
 			obj.profile(i).anom(find(flag_idx == 91)) = [];
+			obj.profile(i).clim(find(flag_idx == 91)) = [];
 			
 			%// Save data for later
 			data  = obj.profile(i).anom;
@@ -998,8 +1015,6 @@ keyboard
 	catch
 	keyboard
 	end
-
-
 	end % end object method objIQR(obj)
 end % end object methods
 
@@ -1243,6 +1258,154 @@ methods (Static)
 		% Save new mat file
 		save([fdir,'woa18_format.mat'],'woa18','-v7.3');
 	end % end static method woa18_format
+
+	function meop_format(fdir,fname)
+	% ------------------------------------------------------------
+	% Format MEOP CTD data for SCV detection
+	% ------------------------------------------------------------
+		
+		% Load SealData.mat
+		load([fdir,fname])
+		
+		% Save as meop
+		meop = sealdata_all;
+
+		% Save new mat file
+		save([fdir,'meop_raw_data.mat'],'meop','-v7.3')
+	end
+
+	function getSettings
+	% ----------------------------------------------------------------------
+	% Script to update settings.mat
+	% ----------------------------------------------------------------------
+		
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Raw data directories and filenames
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objQC
+		% Argo
+		settings.argo.rawdir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.rawfile = 'RAW_global_argo.mat';
+		% Meop
+		settings.meop.rawdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.rawfile = 'meop_raw_data.mat';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Quality controlled data directories and filenames
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objQC
+		% Argo
+		settings.argo.qcdir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.qcfile = 'argo_proc_data.mat';
+		% Meop
+		settings.meop.qcdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.qcfile = 'argo_meop_data.mat';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Processed data directories
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objProc
+		% Argo
+		settings.argo.procdir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.procfile = 'argo_proc_data.mat';
+		% Meop
+		settings.meop.procdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.procfile = 'argo_meop_data.mat';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Anomalies data directories
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objAnom
+		% Argo
+		settings.argo.anomdir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.anomfile = 'argo_anom_data.mat';
+		% Meop
+		settings.meop.anomdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.anomfile = 'meop_anom_data.mat';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% IQR data directories
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objIQR
+		% Argo
+		settings.argo.iqrdir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.iqrfile = 'argo_iqr_data.mat';
+		% Meop
+		settings.meop.iqrdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.iqrfile = 'meop_iqr_data.mat';
+
+		%%%%%%%%%%%%%%%
+		% GSW directory
+		%%%%%%%%%%%%%%%
+		% Used in objInit, objProc, objAnom
+		settings.gswdir = '/data/project1/matlabpathfiles/gsw_matlab_v3_06_11/'; 
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Climatology directory and filename
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objAnom
+		% Argo
+		settings.argo.climdir  = '/data/project1/demccoy/Argo_SCVs/update/scripps_clim/';
+		settings.argo.climfile = 'RG_ArgoClim_TS_Climatologies.mat';
+		settings.argo.climvar  = 'RG_ArgoClim_TS_Climatologies';
+		% Meop
+		settings.meop.climdir  = '/data/project1/demccoy/data/meop/';
+		settings.meop.climfile = 'woa18_format.mat';
+		settings.meop.climvar  = 'woa18';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Quality control thresholds
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objQC
+		% Argo
+		settings.argo.qcmatr  = [100  1000  65; 
+					 1000  inf 105];
+		settings.argo.deep    = 200; 
+		settings.argo.shallow = 50; 
+		settings.argo.depths  = 10; 
+		% Meop
+		settings.meop.qcmatr  = settings.argo.qcmatr;  % Copy settings
+		settings.meop.deep    = settings.argo.deep;    % Copy settings
+		settings.meop.shallow = settings.argo.shallow; % Copy settings
+		settings.meop.depths  = settings.argo.depths;  % Copy settings
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Interpolation thresholds
+		%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objProc
+		% Argo
+		settings.argo.ksrbandwidth   = 10; 
+		settings.argo.density_thresh = 0.1;
+		% Meop
+		settings.meop.ksrbandwidth   = settings.argo.ksrbandwidth;   % Copy settings
+		settings.meop.density_thresh = settings.argo.density_thresh; % Copy settings
+
+		%%%%%%%%%%%%%%%%%%%%%%
+		% Climatology settings
+		%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objAnom
+		% Argo
+		settings.argo.min_clim_pres = 100;
+		% Meop
+		settings.meop.min_clim_pres = settings.argo.min_clim_pres; % Copy settings
+
+		%%%%%%%%%%%%%%%%%%%%%%%
+		% Nearby float settings
+		%%%%%%%%%%%%%%%%%%%%%%%
+		% Use in objInit, objNearby, objIQR
+		% Argo
+		settings.argo.search_dist   = 200;
+		settings.argo.search_time   = 15;
+		settings.argo.min_nearby    = 30;
+
+		% Meop
+		settings.meop.search_dist   = settings.argo.search_dist;   % Copy settings
+		settings.meop.search_time   = settings.argo.search_time;   % Copy settings
+		settings.meop.min_nearby    = settings.argo.min_nearby;    % Copy settings
+
+		% Save
+		save('settings.mat','settings');
+	end % end method getSettings
 end % end static methods
 end % end object
 

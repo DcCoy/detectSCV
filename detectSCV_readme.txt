@@ -9,17 +9,27 @@ Initial steps:
 - Update the folder name in detectSCV_settings.m 
 
 2. Obtain climatological product
-- Use Argo climatology, WOA-18, etc.
-- Save in .mat file with the following structure format:
-- (climname).lon   = array of longitudes (1:M)
-- (climname).lat   = array of latitutes  (1:N)
-- (climname).month = array of months     (1:T) -- (1:1:12)
-- (climname).pres  = array of pressures  (1:Z)
-- (climname).temp  = (M x N x Z x T) matrix of temperatures
-- (climname).salt  = (M x N x Z x T) matrix of salinities
+- If using Andrew's WOA2018.mat, run the following before processing:
+	>> fdir = '/directory/where/WOA2018.mat/exists' <<-- update with correct dir
+	>> fname = 'WOA2018.mat'
+	>> detectSCV.woa18_format(fdir,fname)
+- This will create woa18_format.mat which is correctly formatted
+- If using a separate climatological product, save the .mat file in the following structure format:
+	- (climname).lon   = array of longitudes (1:M)
+	- (climname).lat   = array of latitutes  (1:N)
+	- (climname).month = array of months     (1:T) -- (1:1:12)
+	- (climname).pres  = array of pressures  (1:Z)
+	- (climname).temp  = (M x N x Z x T) matrix of temperatures
+	- (climname).salt  = (M x N x Z x T) matrix of salinities
 - Prefer to have longitudes from 0 - 360, but code should fix it
 
-3. Update detectSCV_settings.m
+3. Reformat SealData.mat
+- If using Andrew's SealData.mat', run the following before processing:
+	>> fdir = '/directory/where/SealData.mat/exists' <<-- update with correct dir
+	>> fname = 'SealData.mat'
+	>> detectSCV.meop_format(fdir,fname)
+
+4. Update detectSCV.getSettings
 ------------------------------------------------------
 -                Data directories                    -
 ------------------------------------------------------

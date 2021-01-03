@@ -1,10 +1,10 @@
 % Master script to run detectSCV in the correct order
 
+% Reload settings.mat
+detectSCV.getSettings;
+
 % Choose which dataset to process
 choice = 'meop';
-
-% Generate settings
-detectSCV_settings;
 
 % Initialize detectSCV object
 obj = detectSCV();
