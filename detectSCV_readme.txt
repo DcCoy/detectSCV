@@ -1,7 +1,9 @@
 Instructions for running detectSCV.
 
-detectSCV is an objecti that combines data and associated actions (methods)
-It can be used on either argo or meop data, assuming they are formatted correctly.
+detectSCV is an object that combines data storage (organized into a structure) and data functions (object methods). 
+It can be used on either argo or meop data after they are formatted correctly (see below).
+
+Follow the initial steps below first, then run detectSCV_master.m, which performs the object methods in order.
 
 Initial steps:
 1. Obtain processing routines
@@ -30,6 +32,8 @@ Initial steps:
 	>> detectSCV.meop_format(fdir,fname)
 
 4. Update detectSCV.getSettings
+- getSettings reproduces settings.mat, which is loaded into objInit
+- You can find getSettings at the very end of the detectSCV.m
 ------------------------------------------------------
 -                Data directories                    -
 ------------------------------------------------------
@@ -81,4 +85,11 @@ Initial steps:
 - settings.().search_dist = distance (km) to look for nearby casts (in a circle) 
 - settings.().search_time = number of days (+-) to look for neartime casts
 - settings.().min_nearby  = minimum number of 'good' nearby floats (space, time) for IQR calc
-
+------------------------------------------------------
+-                IQR Thresholds                      -
+------------------------------------------------------
+- settings.().iqr_mult = multiplier used in setting IQR thresholds
+	- Typically, IQR is used to identify outliers by calculating 25%, 75% percentiles
+	- IQR is defined as the difference between Q3 (75%) and Q1 (25%), or Q3 - Q1
+	- An outlier is flagged when data is less than Q1 - 1.5xIQR or greater thatn Q3 + 1.5xIQR
+	- iqr_mult is thus defaulted to 1.5

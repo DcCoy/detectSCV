@@ -678,7 +678,7 @@ keyboard
 			obj.profile(i).anom(find(flag_idx == 91)) = [];
 			obj.profile(i).clim(find(flag_idx == 91)) = [];
 			
-			%// Save data for later
+			% Save data for later
 			data  = obj.profile(i).anom;
 			flags = obj.flags(i);
 			save([obj.info(i).anomdir,obj.info(i).anomfile],'data','flags','-v7.3')
@@ -870,7 +870,7 @@ keyboard
 				nearby{i} = obj.profile.anom(i).nearbyID;
 			end
 		end
-keyboard
+		
 		% Initiate flag index
 		flag_idx = zeros(1,length(nearby));
 
@@ -959,20 +959,30 @@ keyboard
 				variqr = [vars{i},'_iqr'];
 				varp25 = [vars{i},'_p25'];
 				varp75 = [vars{i},'_p75'];
+				varlim = [vars{i},'_limits'];
+
+				% Set IQR, percentiles, and IQR threshold (p25 - iqr_mult*IQR, p75 + iqr_mult*IQR)
 				if length(obj.info) > 1 % both argo/meop
 					if ID(j) < 2e8 % argo ID
 						obj.profile(1).iqr(j).(variqr) = iqr(data_grid');
 						obj.profile(1).iqr(j).(varp25) = prctile(data_grid',25);
 						obj.profile(1).iqr(j).(varp75) = prctile(data_grid',75);
+						obj.profile(1).iqr(j).(varlim) = [prctile(data_grid',25) - obj.info(1).iqr_mult .*iqr(data_grid'), ...
+										  prctile(data_grid',75) + obj.info(1).iqr_mult .*iqr(data_grid')];
 					elseif ID(j) >= 2e8	
 						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(variqr) = iqr(data_grid');
 						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varp25) = prctile(data_grid',25);
 						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varp75) = prctile(data_grid',75);
+						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varlim) = ...
+										 [prctile(data_grid',25) - obj.info(2).iqr_mult .*iqr(data_grid'), ...
+										  prctile(data_grid',75) + obj.info(2).iqr_mult .*iqr(data_grid')];
 					end
 				else
 					obj.profile.iqr(j).(variqr) = iqr(data_grid');
 					obj.profile.iqr(j).(varp25) = prctile(data_grid',25);
 					obj.profile.iqr(j).(varp75) = prctile(data_grid',75);
+					obj.profile.iqr(j).(varlim) = [prctile(data_grid',25) - obj.info.iqr_mult .*iqr(data_grid'), ...
+							 	       prctile(data_grid',75) + obj.info.iqr_mult .*iqr(data_grid')];
 				end	
 			end
 		end
@@ -1364,10 +1374,10 @@ methods (Static)
 		settings.argo.shallow = 50; 
 		settings.argo.depths  = 10; 
 		% Meop
-		settings.meop.qcmatr  = settings.argo.qcmatr;  % Copy settings
-		settings.meop.deep    = settings.argo.deep;    % Copy settings
-		settings.meop.shallow = settings.argo.shallow; % Copy settings
-		settings.meop.depths  = settings.argo.depths;  % Copy settings
+		settings.meop.qcmatr  = settings.argo.qcmatr;  % Copy argo settings
+		settings.meop.deep    = settings.argo.deep;    % Copy argo settings
+		settings.meop.shallow = settings.argo.shallow; % Copy argo settings
+		settings.meop.depths  = settings.argo.depths;  % Copy argo settings
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Interpolation thresholds
@@ -1377,8 +1387,8 @@ methods (Static)
 		settings.argo.ksrbandwidth   = 10; 
 		settings.argo.density_thresh = 0.1;
 		% Meop
-		settings.meop.ksrbandwidth   = settings.argo.ksrbandwidth;   % Copy settings
-		settings.meop.density_thresh = settings.argo.density_thresh; % Copy settings
+		settings.meop.ksrbandwidth   = settings.argo.ksrbandwidth;   % Copy argo settings
+		settings.meop.density_thresh = settings.argo.density_thresh; % Copy argo settings
 
 		%%%%%%%%%%%%%%%%%%%%%%
 		% Climatology settings
@@ -1387,7 +1397,7 @@ methods (Static)
 		% Argo
 		settings.argo.min_clim_pres = 100;
 		% Meop
-		settings.meop.min_clim_pres = settings.argo.min_clim_pres; % Copy settings
+		settings.meop.min_clim_pres = settings.argo.min_clim_pres; % Copy argo settings
 
 		%%%%%%%%%%%%%%%%%%%%%%%
 		% Nearby float settings
@@ -1397,11 +1407,18 @@ methods (Static)
 		settings.argo.search_dist   = 200;
 		settings.argo.search_time   = 15;
 		settings.argo.min_nearby    = 30;
-
 		% Meop
-		settings.meop.search_dist   = settings.argo.search_dist;   % Copy settings
-		settings.meop.search_time   = settings.argo.search_time;   % Copy settings
-		settings.meop.min_nearby    = settings.argo.min_nearby;    % Copy settings
+		settings.meop.search_dist   = settings.argo.search_dist;   % Copy argo settings
+		settings.meop.search_time   = settings.argo.search_time;   % Copy argo settings
+		settings.meop.min_nearby    = settings.argo.min_nearby;    % Copy argo settings
+
+		%%%%%%%%%%%%%%%%%%%%%%%
+		% IQR settings
+		%%%%%%%%%%%%%%%%%%%%%%%
+		% Argo
+		settings.argo.iqr_mult = 1.5;		
+		% Meop
+		settings.argo.iqr_mult = settings.argo.iqr_mult;           % Copy argo settings
 
 		% Save
 		save('settings.mat','settings');
