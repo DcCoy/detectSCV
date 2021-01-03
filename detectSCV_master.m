@@ -1,6 +1,6 @@
 % Master script to run detectSCV in the correct order
 
-% Reload settings.mat
+% Reload settings.mat in case updates were made
 detectSCV.getSettings;
 
 % Choose which dataset to process
