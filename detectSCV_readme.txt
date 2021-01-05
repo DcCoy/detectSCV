@@ -45,11 +45,12 @@ Initial steps:
 - settings.().procfile = what to name proc'd data
 - settings.().anomdir  = where to put anomalies data 
 - settings.().anomfile = what to name anomalies data
+- settings.().anomclim = what to name float climatologies data
 - settings.().iqrdir   = where to put IQR data
 - settings.().iqrfile  = what to name IQR data
-- settings.().climdir  = where to put climatological data
-- settings.().climfile = what to name climatological data
-- settings.().climvar  = variable name of climatological raw data
+- settings.().climdir  = where to find climatological data
+- settings.().climfile = filename of climatological data
+- settings.().climvar  = variable name of climatological data
 ------------------------------------------------------
 -                Script directories                  -
 ------------------------------------------------------

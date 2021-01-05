@@ -1,13 +1,23 @@
-% Define object
-classdef detectSCV
-% Define object properties
-properties
-	info;  % provides info on data type and where things are stored
-	flags; % where bad profiles are identified
-	profile;  % where loaded data exists
-end
-% Define object methods
-methods 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+classdef detectSCV % start define detectSCV
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+properties % start define detectSCV object properties
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	info;     % provides info on data type and where things are stored
+	flags;    % where bad profiles are identified
+	profile;  % where loaded and processed data exists
+			  % profile.raw    = raw data
+			  % profile.qc     = quality controlled data
+			  % profile.proc   = processed data (interpolated, extra fields)
+			  % profile.anom   = anomalies from climatology data
+			  % profile.clim   = climatology for each float
+			  % profile.iqr    = interquartile range and Q1, Q3 values
+			  % profile.thresh = IQR thresholds for spiciness/N2 anomalies
+end % end define object properties
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+methods % start define detectSCV object methods
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	function obj = objInit(obj,choice);
 	% ----------------------------------------------------------------------
 	% Gather data directories containing raw meop or argo data
@@ -16,10 +26,9 @@ methods
 	%	obj = objInit(obj,choice)
 	%
 	% inputs:
-	%       choice:   'argo','meop', or 'all'
-	%
-	% If choosing 'all', note that different settings can be applied to each
-	% data type (argo, meop), see detectSCV_settings.m 
+	%       choice = 'argo','meop', or 'all'
+	% 	If choosing 'all', note that different settings can be applied to each
+	% 	data type (argo, meop), see detectSCV.getSettings 
 	%
 	% example:
 	%	obj = objInit(obj,'argo')
@@ -28,12 +37,16 @@ methods
 		% Announce routine
 		disp(' ');
 		disp('------------------------- ');
-		disp('Gathering data paths');
+		disp(['Initiating detectSCV:',choice]);
 		disp('------------------------- ');
 		disp(' ');
 
 		% Load setings.mat
-		load('settings.mat');
+		try
+			load('settings.mat');
+		catch
+			detectSCV.getSettings;
+		end
 
 		% addpath to GSW routines
 		addpath(settings.gswdir)
@@ -64,9 +77,9 @@ methods
 	%
 	% flags applied:
 	% 	.flag.empty      = no data
-	%	.flag.shallow    = no data above info.shallow
-	%       .flag.deep       = no data below info.deep
-	%       .flag.depths     = less than (info.depths) data points
+	%	.flag.shallow    = no data above settings.().shallow
+	%       .flag.deep       = no data below settings.().deep
+	%       .flag.depths     = less than settings.().depths z-levels
 	% ------------------------------------------------------------
 		
 		% Announce routine
@@ -214,8 +227,9 @@ methods
 	%	obj = objProc(obj)
 	%
 	% flags applied:
-	%	.bad_density = potential density is inverted (unstable)
-	%                      with a jump greater than info.density_thresh
+	%	.bad_density = potential density is inverted (unstable) and 
+	%                      shows an increase in density with depth that
+	%		       is greater than settings.().density_thresh
 	% -----------------------------------------------------------------
 
 		% Announce routine
@@ -403,7 +417,9 @@ methods
 	%
 	% flags applied:
 	%	.climatology = unable to assign climatological profile 
-	%                      due to cast position (lon, lat).
+	%                      due to cast position (lon, lat) or due to a
+	%		       shallow climatological profile based on
+	%		       settings.().min_clim_pres
 	% -----------------------------------------------------------------
 
 		% Announce routine
@@ -473,8 +489,8 @@ methods
 			disp('Start profile loop...')
 			cnt   = 0; % initialize disp_prog
 			for j = 1:length(obj.profile(i).proc)
-
-                                % Announce loop progress
+                                
+				% Announce loop progress
                                 cnt = detectSCV.disp_prog(j,length(obj.profile(i).proc),cnt);
 
 				% Grab time and nearest lon/lat on climatological grid
@@ -592,7 +608,6 @@ methods
 
 				% Check for flags
 				if flag_idx(j) == 91
-					obj.profile(i).clim(j) = [];
 					continue;
 				end
 			    
@@ -666,8 +681,6 @@ methods
 				end
 			end
 
-keyboard
-
 			% Log flagged profiles
 			ID               	 = [obj.profile(i).anom.ID];
 			obj.flags(i).climatology = ID(find(flag_idx == 91));
@@ -678,10 +691,14 @@ keyboard
 			obj.profile(i).anom(find(flag_idx == 91)) = [];
 			obj.profile(i).clim(find(flag_idx == 91)) = [];
 			
-			% Save data for later
+			% Save anomalies for later
 			data  = obj.profile(i).anom;
 			flags = obj.flags(i);
 			save([obj.info(i).anomdir,obj.info(i).anomfile],'data','flags','-v7.3')
+
+			% Save climatology for later
+			data = obj.profile(i).clim;
+			save([obj.info(i).anomdir,obj.info(i).climfile],'data','-v7.3');
 		end
 	end % end object method objAnom
 
@@ -719,7 +736,11 @@ keyboard
 			catch
 				tmpdata             = load([obj.info(i).anomdir,obj.info(i).anomfile]); % try loading data
 				obj.profile(i).anom = tmpdata.data; 
-				obj.flags(i)        = tmpdata.flags;
+				if i == 1
+					obj.flags = tmpdata.flags;
+				else
+					obj.flags(i) = tmpdata.flags;
+				end
 				clear tmpdata
 			end
 
@@ -815,6 +836,8 @@ keyboard
 	%	obj = objIQR(obj)
 	%
 	% flags applied:
+	%	.min_nearby = Not enough nearby/neartime floats to 
+	%		      calculate IQR, based on settings.().min_nearby 
 	% -----------------------------------------------------------------
 	try	
 		% Announce routine
@@ -1026,10 +1049,10 @@ keyboard
 	keyboard
 	end
 	end % end object method objIQR(obj)
-end % end object methods
-
-% general functions
-methods (Static)
+end % end define object methods
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+methods (Static) % start define Static methods
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	function cnt = disp_prog(i,li,cnt)
 	% ------------------------------------------------------------
 	% disp_prog announces progress in a for-loop
@@ -1329,9 +1352,11 @@ methods (Static)
 		% Argo
 		settings.argo.anomdir  = '/data/project1/demccoy/data/argo/update/';
 		settings.argo.anomfile = 'argo_anom_data.mat';
+		settings.argo.anomclim = 'argo_clim_data.mat';
 		% Meop
 		settings.meop.anomdir  = '/data/project1/demccoy/data/meop/';
 		settings.meop.anomfile = 'meop_anom_data.mat';
+		settings.meop.anomclim = 'meop_clim_data.mat';
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% IQR data directories
@@ -1423,6 +1448,6 @@ methods (Static)
 		% Save
 		save('settings.mat','settings');
 	end % end method getSettings
-end % end static methods
-end % end object
+end % end define Static methods
+end % end define detectSCV object
 
