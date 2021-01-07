@@ -12,8 +12,12 @@ properties % start define detectSCV object properties
 			  % profile.proc   = processed data (interpolated, extra fields)
 			  % profile.anom   = anomalies from climatology data
 			  % profile.clim   = climatology for each float
-			  % profile.iqr    = interquartile range and Q1, Q3 values
-			  % profile.thresh = IQR thresholds for spiciness/N2 anomalies
+			  % profile.nearby = IDs of nearby floats for IQR calculation
+			  % profile.iqr    = interquartile range, Q1 + Q3 values, and
+			  %                  IQR thresholds for spiciness/N2 anomalies
+	scv;      % where detected SCV data exists
+			  % scv.initial    = profiles containing spice + N2 anomalies
+			  %	             which exceed IQR thresholds
 end % end define object properties
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods % start define detectSCV object methods
@@ -810,23 +814,32 @@ methods % start define detectSCV object methods
 		    	if isempty(didx) == 0 & isempty(tidx) == 0
 				aidx = intersect(didx,tidx);
 				if length(obj.info) == 1
-					obj.profile.anom(i).nearbyID = tmp.ID(aidx);
+					obj.profile.nearby(i).IDs = tmp.ID(aidx);
 				else
 					if tmp.ID(i) < 2e8 % argo ID
-						obj.profile(1).anom(i).nearbyID = tmp.ID(aidx);
+						obj.profile(1).nearby(i).IDs = tmp.ID(aidx);
 					elseif tmp.ID(i) >= 2e8 % meop ID
-						obj.profile(2).anom(i-length(obj.profile(1).anom)).nearbyID = tmp.ID(aidx);
+						j = 1-length(obj.profile(1).nearby);
+						obj.profile(2).nearby(j).IDs = tmp.ID(aidx);
 					end
 				end
 		    	else
 				if tmp.ID(i) < 2e8 % argo ID
-					obj.profile(1).anom(i).nearbyID = NaN;
+					obj.profile(1).nearby(i).IDs = NaN;
 				elseif tmp.ID(i) >= 2e8 % meop ID
-					obj.profile(2).anom(i-length(obj.profile(1).anom)).nearbyID = NaN;
+					j = 1-length(obj.profile(1).nearby);
+					obj.profile(2).nearby(j).IDs = NaN;
 				end
 		    	end
 		end
-	end % end object method objNearby(obj)
+
+		% Save results for later
+		for i = 1:length(obj.info)
+			% Save nearby IDs for later
+			data  = obj.profile(i).nearby;
+			save([obj.info(i).nearbydir,obj.info(i).nearbyfile],'data','-v7.3')
+		end
+	end % end object method objNearby
 
 	function obj = objIQR(obj)
 	% ----------------------------------------------------------------
@@ -839,14 +852,35 @@ methods % start define detectSCV object methods
 	%	.min_nearby = Not enough nearby/neartime floats to 
 	%		      calculate IQR, based on settings.().min_nearby 
 	% -----------------------------------------------------------------
-	try	
+		
 		% Announce routine
 		disp(' ');
 		disp('------------------------- ');
 		disp('Finding IQR + thresholds')
 		disp('------------------------- ');
 		disp(' ');
-	
+
+		% Check that data is loaded
+		for i = 1:length(obj.info)
+
+			% Check that anom data, nearby data exists
+			try
+				obj.profile(i).anom(1).pres;  % anom data is loaded
+				obj.profile(i).nearby(1).IDs; % nearby data is loaded
+			catch
+				tmpdata             = load([obj.info(i).anomdir,obj.info(i).anomfile]); % try loading data
+				obj.profile(i).anom = tmpdata.data; 
+				tmpdata             = load([obj.info(i).nearbydir,obj.info(i).nearbyfile]); % try loading data
+				obj.profile(i).anom = tmpdata.data; 
+				if i == 1
+					obj.flags = tmpdata.flags;
+				else
+					obj.flags(i) = tmpdata.flags;
+				end
+				clear tmpdata
+			end
+		end
+
 		% Define variables for IQR calculation
 		vars      = {'spice_anom','N2_anom'};
 		vars_fill = {'spice','N2'};
@@ -878,10 +912,10 @@ methods % start define detectSCV object methods
 			nearby_2 = [];
 			nearby   = [];
 			for i = 1:length(obj.profile(1).anom)
-				nearby_1{i} = obj.profile(1).anom(i).nearbyID;
+				nearby_1{i} = obj.profile(1).nearby(i).IDs;
 			end
 			for i = 1:length(obj.profile(2).anom)
-				nearby_2{i} = obj.profile(2).anom(i).nearbyID;
+				nearby_2{i} = obj.profile(2).nearby(i).IDs;
 			end
 			nearby = [nearby_1 nearby_2];
 			clear nearby_1 nearby_2
@@ -890,7 +924,7 @@ methods % start define detectSCV object methods
 			nearby = [];
 			ID = [obj.profile.anom.ID];
 			for i = 1:length(obj.profile.anom)
-				nearby{i} = obj.profile.anom(i).nearbyID;
+				nearby{i} = obj.profile.nearby(i).IDs;
 			end
 		end
 		
@@ -911,15 +945,18 @@ methods % start define detectSCV object methods
 			end
 	
 			% Initiate matrices
-			tmpdata_IQR = nan(size(tmpdata));
-			tmpdata_p25 = nan(size(tmpdata));
-			tmpdata_p75 = nan(size(tmpdata));
-
+			tmpdata_IQR    = nan(size(tmpdata));
+			tmpdata_p25    = nan(size(tmpdata));
+			tmpdata_p75    = nan(size(tmpdata));
+			tmpdata_lim_hi = nan(size(tmpdata));
+			tmpdata_lim_lo = nan(size(tmpdata));
+			
 			% Start profile loop
+			disp('Start profile loop...')
 			cnt   = 0; % initiate disp_prog
 			for j = 1:length(tmpdata)
-
-                        	% Announce loop progress
+                        	
+				% Announce loop progress
                         	cnt = detectSCV.disp_prog(j,tmpdata,cnt);
 
 				% Check for minimum number of nearby profiles
@@ -985,28 +1022,56 @@ methods % start define detectSCV object methods
 				varlim = [vars{i},'_limits'];
 
 				% Set IQR, percentiles, and IQR threshold (p25 - iqr_mult*IQR, p75 + iqr_mult*IQR)
+				tmpdata_iqr(:,j)    = iqr(data_grid');
+				tmpdata_p25(:,j)    = prctile(data_grid',25);
+				tmpdata_p75(:,j)    = prctile(data_grid',75);
 				if length(obj.info) > 1 % both argo/meop
 					if ID(j) < 2e8 % argo ID
-						obj.profile(1).iqr(j).(variqr) = iqr(data_grid');
-						obj.profile(1).iqr(j).(varp25) = prctile(data_grid',25);
-						obj.profile(1).iqr(j).(varp75) = prctile(data_grid',75);
-						obj.profile(1).iqr(j).(varlim) = [prctile(data_grid',25) - obj.info(1).iqr_mult .*iqr(data_grid'), ...
-										  prctile(data_grid',75) + obj.info(1).iqr_mult .*iqr(data_grid')];
-					elseif ID(j) >= 2e8	
-						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(variqr) = iqr(data_grid');
-						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varp25) = prctile(data_grid',25);
-						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varp75) = prctile(data_grid',75);
-						obj.profile(2).iqr(j-length(obj.profile(1).iqr)).(varlim) = ...
-										 [prctile(data_grid',25) - obj.info(2).iqr_mult .*iqr(data_grid'), ...
-										  prctile(data_grid',75) + obj.info(2).iqr_mult .*iqr(data_grid')];
+						tmpdata_lim_hi(:,j) = tmpdata_p75(:,j) + obj.info(1).iqr_mult.*tmpdata_iqr(:,j);
+						tmpdata_lim_lo(:,j) = tmpdata_p25(:,j) - obj.info(1).iqr_mult.*tmpdata_iqr(:,j);
+					elseif ID(j) >= 2e8 % meop ID
+						tmpdata_lim_hi(:,j) = tmpdata_p75(:,j) + obj.info(2).iqr_mult.*tmpdata_iqr(:,j);
+						tmpdata_lim_lo(:,j) = tmpdata_p25(:,j) - obj.info(2).iqr_mult.*tmpdata_iqr(:,j);
 					end
 				else
-					obj.profile.iqr(j).(variqr) = iqr(data_grid');
-					obj.profile.iqr(j).(varp25) = prctile(data_grid',25);
-					obj.profile.iqr(j).(varp75) = prctile(data_grid',75);
-					obj.profile.iqr(j).(varlim) = [prctile(data_grid',25) - obj.info.iqr_mult .*iqr(data_grid'), ...
-							 	       prctile(data_grid',75) + obj.info.iqr_mult .*iqr(data_grid')];
+					tmpdata_lim_hi(:,j) = tmpdata_p75(:,j) + obj.info.iqr_mult.*tmpdata_iqr(:,j);
+					tmpdata_lim_lo(:,j) = tmpdata_p25(:,j) - obj.info.iqr_mult.*tmpdata_iqr(:,j);
 				end	
+			end
+	
+			% Assign tmpdata to profile
+			for j = 1:length(tmpdata)
+				if length(obj.info) > 1 % both argo/meop
+					if ID(j) < 2e8 % argo ID
+						obj.profile(1).iqr(j).ID       = obj.profile(1).anom(j).ID;
+						obj.profile(1).iqr(j).lon      = obj.profile(1).anom(j).lon;
+						obj.profile(1).iqr(j).lat      = obj.profile(1).anom(j).lat;
+						obj.profile(1).iqr(j).time     = obj.profile(1).anom(j).time;
+						obj.profile(1).iqr(j).(variqr) = tmpdata_iqr(:,j);
+						obj.profile(1).iqr(j).(varp25) = tmpdata_p25(:,j);
+						obj.profile(1).iqr(j).(varp75) = tmpdata_p75(:,j);
+						obj.profile(1).iqr(j).(varlim) = [tmpdata_lim_lo(:,j) tmpdata_lim_hi(:,j)];
+					elseif ID(j) >= 2e8 % meop ID
+						k = j - length(obj.profile(1).iqr);
+						obj.profile(2).iqr(k).ID       = obj.profile(2).anom(k).ID;
+						obj.profile(2).iqr(k).lon      = obj.profile(2).anom(k).lon;
+						obj.profile(2).iqr(k).lat      = obj.profile(2).anom(k).lat;
+						obj.profile(1).iqr(k).time     = obj.profile(2).anom(k).time;
+						obj.profile(2).iqr(k).(variqr) = tmpdata_iqr(:,j);
+						obj.profile(2).iqr(k).(varp25) = tmpdata_p25(:,j);
+						obj.profile(2).iqr(k).(varp75) = tmpdata_p75(:,j);
+						obj.profile(2).iqr(k).(varlim) = [tmpdata_lim_lo(:,j) tmpdata_lim_hi(:,j)];
+					end
+				else
+					obj.profile.iqr(j).ID       = obj.profile.anom(j).ID;
+					obj.profile.iqr(j).lon      = obj.profile.anom(j).lon;
+					obj.profile.iqr(j).lat      = obj.profile.anom(j).lat;
+					obj.profile.iqr(j).time     = obj.profile.anom(j).time;
+					obj.profile.iqr(j).(variqr) = tmpdata_iqr(:,j);
+					obj.profile.iqr(j).(varp25) = tmpdata_p25(:,j);
+					obj.profile.iqr(j).(varp75) = tmpdata_p75(:,j);
+					obj.profile.iqr(j).(varlim) = [tmpdata_lim_lo(:,j) tmpdata_lim_hi(:,j)];
+				end
 			end
 		end
 
@@ -1045,10 +1110,53 @@ methods % start define detectSCV object methods
 			flags = obj.flags;
 			save([obj.info.iqrdir,obj.info.iqrfile],'data','flags','-v7.3')
 		end
-	catch
-	keyboard
-	end
-	end % end object method objIQR(obj)
+	end % end object method objIQR
+
+	function obj = objDetect(obj)
+	% ----------------------------------------------------------------
+	% Detect isopycnals with anomalous spice/N2 anomalies
+	%
+	% usage:
+	%	obj = objDetect(obj)
+	% -----------------------------------------------------------------
+
+		% Announce routine
+		disp(' ');
+		disp('------------------------- ');
+		disp('Detecting spice + N2 outliers')
+		disp('------------------------- ');
+		disp(' ');
+
+		% Load iqr and anomaly data
+		for i = 1:length(obj.info)	
+			
+			% Check that anom data exists
+			try
+				obj.profile(i).anom(1).lon;           % data is loaded
+				obj.profile(i).iqr(1).spice_anom_iqr; % data is loaded 
+			catch
+				tmpdata             = load([obj.info(i).anomdir,obj.info(i).anomfile]); % load anom data
+				obj.profile(i).anom = tmpdata.data; 
+				tmpdata             = load([obj.info(i).iqrdir,obj.info(i).iqrfile]);   % load iqr data
+				obj.profile(i).iqr  = tmpdata.data;
+				if i == 1
+					obj.flags = tmpdata.flags;
+				else
+					obj.flags(i) = tmpdata.flags;
+				end
+				clear tmpdata
+			end
+			
+			% Remove flagged data
+			IDa = [obj.profile(i).anom.ID];
+			IDi = [obj.profile(i).iqr.ID]; 
+			IDf = [obj.flags(i).total];
+			inda = find(ismember(IDa,IDf));
+			indi = find(ismember(IDi,IDf));
+			obj.profile(i).anom(inda) = [];
+			obj.profile(i).iqr(inda)  = []; 
+		end	
+	end % end object method objDetect
 end % end define object methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static) % start define Static methods
@@ -1359,6 +1467,17 @@ methods (Static) % start define Static methods
 		settings.meop.anomclim = 'meop_clim_data.mat';
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Nearby ID data directories
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Used in objInit, objNearby, objIQR
+		% Argo
+		settings.argo.neardir  = '/data/project1/demccoy/data/argo/update/';
+		settings.argo.nearfile = 'argo_nearby_data.mat';
+		% Meop
+		settings.meop.neardir  = '/data/project1/demccoy/data/meop';
+		settings.meop.nearfile = 'meop_nearby_data.mat';
+
+		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% IQR data directories
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Used in objInit, objIQR
@@ -1443,7 +1562,7 @@ methods (Static) % start define Static methods
 		% Argo
 		settings.argo.iqr_mult = 1.5;		
 		% Meop
-		settings.argo.iqr_mult = settings.argo.iqr_mult;           % Copy argo settings
+		settings.meop.iqr_mult = settings.argo.iqr_mult;           % Copy argo settings
 
 		% Save
 		save('settings.mat','settings');
