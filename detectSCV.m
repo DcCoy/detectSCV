@@ -827,7 +827,7 @@ methods % start define detectSCV object methods
 				if tmp.ID(i) < 2e8 % argo ID
 					obj.profile(1).nearby(i).IDs = NaN;
 				elseif tmp.ID(i) >= 2e8 % meop ID
-					j = 1-length(obj.profile(1).nearby);
+					j = 1 - length(obj.profile(1).nearby);
 					obj.profile(2).nearby(j).IDs = NaN;
 				end
 		    	end
@@ -837,7 +837,7 @@ methods % start define detectSCV object methods
 		for i = 1:length(obj.info)
 			% Save nearby IDs for later
 			data  = obj.profile(i).nearby;
-			save([obj.info(i).nearbydir,obj.info(i).nearbyfile],'data','-v7.3')
+			save([obj.info(i).neardir,obj.info(i).nearfile],'data','-v7.3')
 		end
 	end % end object method objNearby
 
@@ -868,16 +868,16 @@ methods % start define detectSCV object methods
 				obj.profile(i).anom(1).pres;  % anom data is loaded
 				obj.profile(i).nearby(1).IDs; % nearby data is loaded
 			catch
-				tmpdata             = load([obj.info(i).anomdir,obj.info(i).anomfile]); % try loading data
-				obj.profile(i).anom = tmpdata.data; 
-				tmpdata             = load([obj.info(i).nearbydir,obj.info(i).nearbyfile]); % try loading data
-				obj.profile(i).anom = tmpdata.data; 
+				tmpdata               = load([obj.info(i).anomdir,obj.info(i).anomfile]); % try loading data
+				obj.profile(i).anom   = tmpdata.data; 
 				if i == 1
 					obj.flags = tmpdata.flags;
 				else
 					obj.flags(i) = tmpdata.flags;
 				end
 				clear tmpdata
+				tmpdata               = load([obj.info(i).neardir,obj.info(i).nearfile]); % try loading data
+				obj.profile(i).nearby = tmpdata.data; 
 			end
 		end
 
@@ -957,7 +957,7 @@ methods % start define detectSCV object methods
 			for j = 1:length(tmpdata)
                         	
 				% Announce loop progress
-                        	cnt = detectSCV.disp_prog(j,tmpdata,cnt);
+                        	cnt = detectSCV.disp_prog(j,length(tmpdata),cnt);
 
 				% Check for minimum number of nearby profiles
 				if length(nearby{j}) < obj.info(1).min_nearby
@@ -1056,7 +1056,7 @@ methods % start define detectSCV object methods
 						obj.profile(2).iqr(k).ID       = obj.profile(2).anom(k).ID;
 						obj.profile(2).iqr(k).lon      = obj.profile(2).anom(k).lon;
 						obj.profile(2).iqr(k).lat      = obj.profile(2).anom(k).lat;
-						obj.profile(1).iqr(k).time     = obj.profile(2).anom(k).time;
+						obj.profile(2).iqr(k).time     = obj.profile(2).anom(k).time;
 						obj.profile(2).iqr(k).(variqr) = tmpdata_iqr(:,j);
 						obj.profile(2).iqr(k).(varp25) = tmpdata_p25(:,j);
 						obj.profile(2).iqr(k).(varp75) = tmpdata_p75(:,j);
