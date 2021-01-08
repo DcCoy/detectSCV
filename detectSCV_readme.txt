@@ -46,6 +46,8 @@ Initial steps:
 - settings.().anomdir  = where to put anomalies data 
 - settings.().anomfile = what to name anomalies data
 - settings.().anomclim = what to name float climatologies data
+- settings.().neardir  = where to put nearby ID index data
+- settings.().nearfile = what to name nearby ID index data
 - settings.().iqrdir   = where to put IQR data
 - settings.().iqrfile  = what to name IQR data
 - settings.().climdir  = where to find climatological data
@@ -63,8 +65,8 @@ Initial steps:
 	- adding additional rows will add additional thresholds
 	- example: [0 700 65; 700 inf 105] rejects profiles with a 65dbar gap in data
 		   between 0 - 700 dbar and a 105dbar gap from 700 dbar to max depth 
-- settings.().deep    = casts must have data below this pressure
-- settings.().shallow = casts must have data above this pressure
+- settings.().deep    = casts must have data below this pressure level
+- settings.().shallow = casts must have data above this pressure level
 - settings.().depths  = casts must have this many depths with good data
 ------------------------------------------------------
 -                Processing                          -
