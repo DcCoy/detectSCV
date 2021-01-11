@@ -25,11 +25,12 @@ Initial steps:
 	- (climname).salt  = (M x N x Z x T) matrix of salinities
 - Prefer to have longitudes from 0 - 360, but code should fix it
 
-3. Reformat SealData.mat
-- If using Andrew's SealData.mat', run the following before processing:
-	>> fdir = '/directory/where/SealData.mat/exists' <<-- update with correct dir
-	>> fname = 'SealData.mat'
-	>> detectSCV.meop_format(fdir,fname)
+3. Update SealData.mat and RAW_argo_data.mat (optional)
+- If attempting to update Argo data (RAW_argo_data is only up to Feb 2020), see argoload_readme.txt
+- for netcdf download instructions. Then, update 'netcdf_dir' in detectSCV.getRawArgo, remove the 'return',
+- and run!
+- If attempting to update Seal data, Andrew should have the scripts to do so...
+- Consider adding a function getRawMeop?
 
 4. Update detectSCV.getSettings
 - getSettings reproduces settings.mat, which is loaded into objInit

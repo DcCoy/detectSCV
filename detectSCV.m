@@ -102,7 +102,7 @@ methods % start define detectSCV object methods
 			if strcmp(obj.info(i).datatype,'argo');
 				tmpdata = tmpdata.argo;
 			elseif strcmp(obj.info(i).datatype,'meop');
-				tmpdata = tmpdata.meop;
+				tmpdata = tmpdata.sealdata_all;
 			end
 
 			% Set up flags	
@@ -122,33 +122,54 @@ methods % start define detectSCV object methods
 
 				% Get meta data from each profile, create ID system
 				if strcmp(obj.info(i).datatype,'argo')
-					obj.profile(i).meta(j).ID = 1e8 + j;
+					obj.profile(i).meta(j).ID        = 1e8 + j;
+					obj.profile(i).meta(j).float     = tmpdata(j).float;
+					obj.profile(i).meta(j).cycle     = tmpdata(j).cycle;
+					obj.profile(i).meta(j).data_mode = tmpdata(j).data_mode;
+					obj.profile(i).meta(j).lat       = tmpdata(j).lat;
+					obj.profile(i).meta(j).lon       = tmpdata(j).lon;
+					obj.profile(i).meta(j).time      = tmpdata(j).time; 
 				elseif strcmp(obj.info(i).datatype,'meop')
-					obj.profile(i).meta(j).ID = 2e8 + j;
+					obj.profile(i).meta(j).ID   = 2e8 + j;
+					obj.profile(i).meta(j).lat  = tmpdata(j).LAT;
+					obj.profile(i).meta(j).lon  = tmpdata(j).LON;
+					obj.profile(i).meta(j).time = tmpdata(j).TIME;
 				end
-				obj.profile(i).meta(j).lat  = tmpdata(j).LAT;
-				obj.profile(i).meta(j).lon  = tmpdata(j).LON;
-				obj.profile(i).meta(j).time = tmpdata(j).TIME;
 
-				% Get raw ctd data (+ QC codes) from each profile
-				obj.profile(i).raw(j).ID      = obj.profile(i).meta(j).ID;
-				obj.profile(i).raw(j).lon     = tmpdata(j).LON;
-				obj.profile(i).raw(j).lat     = tmpdata(j).LAT;
-				obj.profile(i).raw(j).time    = tmpdata(j).TIME;
-				obj.profile(i).raw(j).temp    = tmpdata(j).TEMP;
-				obj.profile(i).raw(j).salt    = tmpdata(j).SALT;
-				obj.profile(i).raw(j).pres    = tmpdata(j).PRES;
-				obj.profile(i).raw(j).temp_qc = tmpdata(j).TEMP_QC;
-				obj.profile(i).raw(j).salt_qc = tmpdata(j).SALT_QC;
-				obj.profile(i).raw(j).pres_qc = tmpdata(j).PRES_QC;
+				% Get raw ctd data (+ QC codes if loading meop) from each profile
+				% Argo initial QC is performed in load_raw_argo.m
+				if strcmp(obj.info(i).datatype,'argo')
+					obj.profile(i).raw(j).ID      = obj.profile(i).meta(j).ID;
+					obj.profile(i).raw(j).lon     = tmpdata(j).lon;
+					obj.profile(i).raw(j).lat     = tmpdata(j).lat;
+					obj.profile(i).raw(j).time    = tmpdata(j).time;
+					obj.profile(i).raw(j).temp    = tmpdata(j).temp;
+					obj.profile(i).raw(j).salt    = tmpdata(j).salt;
+					obj.profile(i).raw(j).temp_qc = [];
+					obj.profile(i).raw(j).salt_qc = [];
+					obj.profile(i).raw(j).pres_qc = [];
+				elseif strcmp(obj.info(i).datatype,'meop')
+					obj.profile(i).raw(j).ID      = obj.profile(i).meta(j).ID;
+					obj.profile(i).raw(j).lon     = tmpdata(j).LON;
+					obj.profile(i).raw(j).lat     = tmpdata(j).LAT;
+					obj.profile(i).raw(j).time    = tmpdata(j).TIME;
+					obj.profile(i).raw(j).temp    = tmpdata(j).TEMP;
+					obj.profile(i).raw(j).salt    = tmpdata(j).SALT;
+					obj.profile(i).raw(j).pres    = tmpdata(j).PRES;
+					obj.profile(i).raw(j).temp_qc = tmpdata(j).TEMP_QC;
+					obj.profile(i).raw(j).salt_qc = tmpdata(j).SALT_QC;
+					obj.profile(i).raw(j).pres_qc = tmpdata(j).PRES_QC;
+				end
 				
 				% Copy raw to qc
 				obj.profile(i).qc(j) = obj.profile(i).raw(j);
 
 				% Check bad flags (3+), make them NaN
-				obj.profile(i).qc(j).temp(find(str2num(obj.profile(i).raw(j).temp_qc)>2)) = NaN;
-				obj.profile(i).qc(j).salt(find(str2num(obj.profile(i).raw(j).salt_qc)>2)) = NaN;
-				obj.profile(i).qc(j).pres(find(str2num(obj.profile(i).raw(j).pres_qc)>2)) = NaN;
+				if strcmp(obj.info(i).datatype,'meop')
+					obj.profile(i).qc(j).temp(find(str2num(obj.profile(i).raw(j).temp_qc)>2)) = NaN;
+					obj.profile(i).qc(j).salt(find(str2num(obj.profile(i).raw(j).salt_qc)>2)) = NaN;
+					obj.profile(i).qc(j).pres(find(str2num(obj.profile(i).raw(j).pres_qc)>2)) = NaN;
+				end
 
 				% Remove bad rows
 				badline                     = [obj.profile(i).qc(j).pres + ...
@@ -1157,10 +1178,193 @@ methods % start define detectSCV object methods
 			obj.profile(i).iqr(inda)  = []; 
 		end	
 	end % end object method objDetect
+	
+	function getRawArgo(obj)
+	% ----------------------------------------------------------------------
+	% Loads raw argo profiles from netcdf files.
+	% See argoload_readme.txt for netcdf download instructions
+	% ----------------------------------------------------------------------
+
+		% Announce routine
+		disp(' ');
+		disp('------------------------- ');
+		disp('Creating raw argo matfile')
+		disp('------------------------- ');
+		disp(' ');
+
+		% Get settings
+		detectSCV.getSettings
+		load('settings.mat');
+
+		% Establish bad min/max oceanic values for p,t,s
+		p_lim = [0 10000];
+		t_lim = [-4 40];
+		s_lim = [10 45];
+
+		netcdf_dir = '/data/project1/data/argo/pub/outgoing/argo/geo/';
+		disp('UPDATE DIRECTORIES OF ARGO NETCDF FILES FIRST')
+		return
+	
+		% Keep track of total floats, for structures
+		count = 1;
+		for y = 1995:2021 % all years
+		    disp(['YEAR ',num2str(y)])
+		    disp(['TOTAL ARGO PROFILES SO FAR: ',num2str(count-1)])
+		    for m = 1:12 % all months
+			for d = 1:31 % all days
+			    for b = 1:3 % all basins
+
+				% Select directory for data (Pac --> Atl --> Ind)
+				if b == 1
+				    diri = [netcdf_dir,'pacific_ocean/'];
+				elseif b == 2
+				    diri = [netcdf_dir,'atlantic_ocean/'];
+				elseif b == 3
+				    diri = [netcdf_dir,'indian_ocean/'];
+				end
+				
+				% Grab filename string
+				if d < 10 & m < 10
+				    fname = [diri,num2str(y),'/','0',num2str(m),'/',num2str(y),'0',num2str(m),'0',num2str(d),'_prof.nc'];
+				elseif d < 10 & m >= 10
+				    fname = [diri,num2str(y),'/',num2str(m),'/',num2str(y),num2str(m),'0',num2str(d),'_prof.nc'];
+				elseif d >= 10 & m < 10
+				    fname = [diri,num2str(y),'/','0',num2str(m),'/',num2str(y),'0',num2str(m),num2str(d),'_prof.nc'];
+				elseif d >= 10 & m >= 10
+				    fname = [diri,num2str(y),'/',num2str(m),'/',num2str(y),num2str(m),num2str(d),'_prof.nc'];
+				end
+
+				% Load float meta, profile, and QC data for that day
+				try
+				    float = ncread(fname,'PLATFORM_NUMBER');
+				    cast = ncread(fname,'CYCLE_NUMBER');
+				    lat = ncread(fname,'LATITUDE');
+				    lon = ncread(fname,'LONGITUDE');
+				    time = ncread(fname,'JULD');
+				    mode = ncread(fname,'DATA_MODE');
+				    profile_mode = ncread(fname,'DIRECTION');
+				    temp = ncread(fname,'TEMP');
+				    temp_qc = ncread(fname,'TEMP_QC');
+				    temp_adj = ncread(fname,'TEMP_ADJUSTED');
+				    temp_adj_qc = ncread(fname,'TEMP_ADJUSTED_QC');
+				    salt = ncread(fname,'PSAL');
+				    salt_qc = ncread(fname,'PSAL_QC');
+				    salt_adj = ncread(fname,'PSAL_ADJUSTED');
+				    salt_adj_qc = ncread(fname,'PSAL_ADJUSTED_QC');
+				    pres = ncread(fname,'PRES');
+				    pres_qc = ncread(fname,'PRES_QC');
+				    pres_adj = ncread(fname,'PRES_ADJUSTED');
+				    pres_adj_qc = ncread(fname,'PRES_ADJUSTED_QC');
+
+				    % For all the profiles from that day, check for bad points and remove them
+				    for f = 1:length(mode)
+
+					% Ignore descending profiles (only want ascending)
+					if strmatch('D',profile_mode(f))==1
+					    continue
+					end
+
+					% Save meta data
+					argo(count).float = [deblank(char(float(:,f))')]; %'
+					argo(count).cycle = [cast(f)]; 
+					argo(count).lon = lon(f);
+					argo(count).lat = lat(f);
+					argo(count).time = datevec(time(f)+datenum([1950 01 01 0 0 0]));
+					argo(count).data_mode = mode(f);
+								
+					% Check for adjusted data or delayed mode, only keep flags 1 or 2 (good or probably good)
+					if strmatch(mode(f),['A';'D'])>0
+					    indt = find(str2num(temp_adj_qc(:,f))<3);
+					    inds = find(str2num(salt_adj_qc(:,f))<3);
+					    indp = find(str2num(pres_adj_qc(:,f))<3);
+					    indts = intersect(indt,inds);
+					    indtsp = intersect(indts,indp);
+					    if isempty(indtsp) == 1
+						continue
+					    elseif length(indtsp) < 25
+						continue
+					    end
+					    argo(count).temp = temp_adj(indtsp,f);
+					    argo(count).salt = salt_adj(indtsp,f);
+					    argo(count).pres = pres_adj(indtsp,f);
+
+					    % Remove obviously bad points
+					    argo(count).temp((argo(count).temp > 40)) = NaN;
+					    argo(count).temp((argo(count).temp < -4)) = NaN;
+					    argo(count).salt((argo(count).salt > 40)) = NaN;
+					    argo(count).salt((argo(count).salt < 10)) = NaN;
+					    argo(count).pres((argo(count).pres < 0))  = NaN;
+					    argo(count).pres((argo(count).pres > 1e4))= NaN;
+
+					    % Remove any other levels where data is NaN
+					    badline = [argo(count).pres + argo(count).temp + argo(count).salt];
+					    ind = find(isnan(badline)==1);
+					    argo(count).pres(ind) = [];
+					    argo(count).salt(ind) = [];
+					    argo(count).temp(ind) = [];
+
+					% If no delayed or adjusted, check for good real-time data flags (will remove grey-list floats later)
+					elseif strmatch('R',mode(f))==1
+					    indt = find(str2num(temp_qc(:,f))<3);
+					    inds = find(str2num(salt_qc(:,f))<3);
+					    indp = find(str2num(pres_qc(:,f))<3);
+					    indts = intersect(indt,inds);
+					    indtsp = intersect(indts,indp);
+					    if isempty(indtsp) ==1
+						continue
+					    elseif length(indtsp) < 25
+						continue
+					    end
+					    argo(count).temp = temp(indtsp,f);
+					    argo(count).salt = salt(indtsp,f);
+					    argo(count).pres = pres(indtsp,f);
+
+					    % Remove obviously bad points
+					    argo(count).temp((argo(count).temp > 40)) = NaN;
+					    argo(count).temp((argo(count).temp < -4)) = NaN;
+					    argo(count).salt((argo(count).salt > 40)) = NaN;
+					    argo(count).salt((argo(count).salt < 10)) = NaN;
+					    argo(count).pres((argo(count).pres < 0))  = NaN;
+					    argo(count).pres((argo(count).pres > 1e4))= NaN;
+
+					    % Remove any other levels where data is NaN
+					    badline = [argo(count).pres + argo(count).temp + argo(count).salt];
+					    ind = find(isnan(badline)==1);
+					    argo(count).pres(ind) = [];
+					    argo(count).salt(ind) = [];
+					    argo(count).temp(ind) = [];
+					end
+
+					% Assuming all is good, increase count and move onto next float
+					count = count + 1;
+				    end
+				catch
+				    % Move on, no profiles found
+				end
+			    end    
+			end
+		    end	
+		end
+
+		% Make single to save memory
+		for i = 1:length(argo)
+		    argo(i).cycle = single(argo(i).cycle);
+		    argo(i).lon = single(argo(i).lon);
+		    argo(i).lat = single(argo(i).lat);
+		    argo(i).temp = single(argo(i).temp);
+		    argo(i).salt = single(argo(i).salt);
+		    argo(i).pres = single(argo(i).pres);
+		end
+				
+		% Save data
+		mname = [settings.argo.rawdir,settings.argo.rawfile];
+		save(mname,'argo','-v7.3')
+	end % end object method getRawArgo
 end % end define object methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static) % start define Static methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 	function cnt = disp_prog(i,li,cnt)
 	% ------------------------------------------------------------
 	% disp_prog announces progress in a for-loop
@@ -1400,21 +1604,6 @@ methods (Static) % start define Static methods
 		save([fdir,'woa18_format.mat'],'woa18','-v7.3');
 	end % end static method woa18_format
 
-	function meop_format(fdir,fname)
-	% ------------------------------------------------------------
-	% Format MEOP CTD data for SCV detection
-	% ------------------------------------------------------------
-		
-		% Load SealData.mat
-		load([fdir,fname])
-		
-		% Save as meop
-		meop = sealdata_all;
-
-		% Save new mat file
-		save([fdir,'meop_raw_data.mat'],'meop','-v7.3')
-	end
-
 	function getSettings
 	% ----------------------------------------------------------------------
 	% Script to update settings.mat
@@ -1429,7 +1618,7 @@ methods (Static) % start define Static methods
 		settings.argo.rawfile = 'RAW_global_argo.mat';
 		% Meop
 		settings.meop.rawdir  = '/data/project1/demccoy/data/meop/';
-		settings.meop.rawfile = 'meop_raw_data.mat';
+		settings.meop.rawfile = 'SealData.mat';
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Quality controlled data directories and filenames
@@ -1474,7 +1663,7 @@ methods (Static) % start define Static methods
 		settings.argo.neardir  = '/data/project1/demccoy/data/argo/update/';
 		settings.argo.nearfile = 'argo_nearby_data.mat';
 		% Meop
-		settings.meop.neardir  = '/data/project1/demccoy/data/meop';
+		settings.meop.neardir  = '/data/project1/demccoy/data/meop/';
 		settings.meop.nearfile = 'meop_nearby_data.mat';
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1487,12 +1676,6 @@ methods (Static) % start define Static methods
 		% Meop
 		settings.meop.iqrdir  = '/data/project1/demccoy/data/meop/';
 		settings.meop.iqrfile = 'meop_iqr_data.mat';
-
-		%%%%%%%%%%%%%%%
-		% GSW directory
-		%%%%%%%%%%%%%%%
-		% Used in objInit, objProc, objAnom
-		settings.gswdir = '/data/project1/matlabpathfiles/gsw_matlab_v3_06_11/'; 
 
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Climatology directory and filename
@@ -1507,6 +1690,12 @@ methods (Static) % start define Static methods
 		settings.meop.climfile = 'woa18_format.mat';
 		settings.meop.climvar  = 'woa18';
 
+		%%%%%%%%%%%%%%%
+		% GSW directory
+		%%%%%%%%%%%%%%%
+		% Used in objInit, objProc, objAnom
+		settings.gswdir = '/data/project1/matlabpathfiles/gsw_matlab_v3_06_11/'; 
+		
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Quality control thresholds
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%
